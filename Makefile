@@ -8,7 +8,6 @@ all: flow
 flow: flow.o argparse.o
 	$(CC) $(CFLAGS) $^ -o $@
 
-#
 flow.o: flow.c argparse.h
 	$(CC) $(CFLAGS) -c $<
 
