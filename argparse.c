@@ -1,18 +1,15 @@
 #include "argparse.h"
 
-int arg_parse(int *opt, int *timer, int *interval, int *count, FILE *file, char *collector, char *ptr) {
+int arg_parse(int *opt, int *timer, int *interval, int *count, char **file, char **collector, char *ptr) {
     switch (*opt)
         {
         case 'f':
-            file = fopen(optarg, "r");
-            if (file == NULL)
-            {
-                return 1;
-            }
+            *file = optarg;
+            printf("%s\n", *file);
             break;
         case 'c':
-            collector = optarg;
-            printf("%s\n", collector);
+            *collector = optarg;
+            printf("%s\n", *collector);
             break;
         case 'a':
             *timer = strtol(optarg, &ptr, 10);
@@ -38,8 +35,11 @@ int arg_parse(int *opt, int *timer, int *interval, int *count, FILE *file, char 
             }
             printf("count: %d\n", *count);
             break;
-        default:
-            printf("unknown parameter, please use only -f -c -a -i -m\n");
+        case '?':
+            printf("unknown parameter %c, please use only -f -c -a -i -m\n", optopt);
+            return 1;
+        case ':':
+            printf("value needed for parameter %c\n", optopt);
             return 1;
         }
         return 0;
