@@ -11,9 +11,40 @@ int first_time = 0;
 int last_time = 0;
 int flow_bytes = 0;
 
-/*
- * checks, whether time between first and last packet of a flow exceeded timer, or time between the latest and newest packet exceeded interval time
- */
+void swap(packet_item *a, packet_item *b)
+{
+    packet_struct *temp = a->data;
+    a->data = b->data;
+    b->data = temp;
+}
+
+void bubbleSort(packet_item *start)
+{
+    int swapped;
+    packet_item *ptr1;
+    packet_item *lptr = NULL;
+
+    /* Checking for empty list */
+    if (start == NULL)
+        return;
+
+    do
+    {
+        swapped = 0;
+        ptr1 = start;
+
+        while (ptr1->next != lptr)
+        {
+            if (ptr1->data->time > ptr1->next->data->time)
+            {
+                swap(ptr1, ptr1->next);
+                swapped = 1;
+            }
+            ptr1 = ptr1->next;
+        }
+        lptr = ptr1;
+    } while (swapped);
+}
 
 void send_packets()
 {
@@ -30,37 +61,83 @@ void send_packets()
         pointer = tmp;
     }
 }
+
+void send_packet()
+{
+    packet_item *tmp = head;
+    printf("%s:%d %s:%d %s %d %d %d SENT\n", tmp->data->sourceIP, tmp->data->sourcePORT, tmp->data->destinationIP, tmp->data->destinationPORT, tmp->data->Protocol_type, tmp->data->time, tmp->data->firstTime, tmp->data->size);
+    free(tmp->data->sourceIP);
+    free(tmp->data->destinationIP);
+    free(tmp->data);
+    free(tmp);
+}
+
+/*
+ * checks, whether time between first and last packet of a flow exceeded timer, or time between the latest and newest packet exceeded interval time
+ */
 int timer_check(int timer, int interval, int *first, int *last, int *bytes, packet_item *item)
 {
-    if (((item->data->time - *last) >= interval) && (*last != 0))
+    packet_item *head_next = NULL;
+    // inactive
+    if (((item->data->time - head->data->time) >= interval))
     {
+        // toto jsem přidal
+        bubbleSort(head);
+        while ((item->data->time - head->data->time) >= interval) {
+            head_next = head->next;
+            send_packet();
+            head = head_next;
+            if (!head) {
+                break;
+            }
+        }
+        if (!head) {
+            head = item;
+        }
+        //po sem
         printf("interval exceeded, flow exported\n");
-        send_packets();
-        head = item;
-        *bytes = item->data->size;
+        *first = head->data->time;
+        *last = head->data->time;
         return 1;
     }
     // FIX
+    /*
     if ((*bytes + item->data->size) >= count_g)
     {
         printf("Flow size exceeded, flow exported\n");
         send_packets();
         head = item;
         *bytes = item->data->size;
+        *first = item->data->time;
+        *last = item->data->time;
         return 1;
-    }
+    }*/
     *bytes += item->data->size;
     if (*first == 0)
     {
         *first = item->data->time;
     }
     *last = item->data->time;
+    // active
     if ((*last - *first) >= timer)
     {
         printf("timer exceeded, flow exported\n");
-        send_packets();
-        head = item;
-        *first = item->data->time;
+        /* odstranit HEAD a přesunout head na další, kontrolovat další packet, jestli pro něj to funguje*/
+
+        // toto jsem přidal
+        while ((*last - *first) >= timer)
+        {
+            head_next = head->next;
+            send_packet();
+            head = head_next;
+            if (!head) {
+                break;
+            }
+        }
+        if (!head) {
+            head = item;
+        }
+        *first = head->data->time;
         *bytes = item->data->size;
         return 1;
     }
@@ -174,7 +251,7 @@ void pcap_handle(u_char *args, const struct pcap_pkthdr *header, const u_char *p
     ts = *localtime(&header->ts.tv_sec);
     strftime(buf, sizeof(buf), "%a %Y-%m-%d %H:%M:%S %Z", &ts);
     printf("   Time: %s\n", buf);
-    printf("   Size: %d", htons(ip->ip_len));
+    // printf("   Size: %d", htons(ip->ip_len));
     printf("\n");
 
     new_item->data->sourceIP = malloc(strlen(inet_ntoa(ip->ip_src)) + 1);
@@ -221,7 +298,7 @@ void pcap_handle(u_char *args, const struct pcap_pkthdr *header, const u_char *p
             free(new_item);
         }
     }
-    printf("%d %d\n", first_time, last_time);
+    // printf("%d %d\n", first_time, last_time);
     return;
 }
 
@@ -265,6 +342,7 @@ int device_set(char *file)
     printf("success\n");
     if (head)
     {
+        bubbleSort(head);
         send_packets();
     }
     return 0;
