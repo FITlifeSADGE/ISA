@@ -21,9 +21,10 @@ typedef struct {
     char *destinationIP;
     int sourcePORT;
     int destinationPORT;
-	// int ToS;
 	char *Protocol_type;
 	int time;
+	int firstTime;
+	int size;
 }packet_struct;
 
 typedef struct packet_item{

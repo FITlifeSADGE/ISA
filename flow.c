@@ -1,6 +1,9 @@
 #include "argparse.h"
+/* GLOBAL VARIABLES BECAUSE OF PCAP_LOOP*/
 packet_item *ptr;
 packet_item *head;
+int timer_g;
+int interval_g;
 
 /*
  * dissect/print packet
@@ -121,6 +124,8 @@ void pcap_handle(u_char *args, const struct pcap_pkthdr *header, const u_char *p
     new_item->data->destinationPORT = DestPort;
     new_item->data->Protocol_type = type;
     new_item->data->time = time;
+    new_item->data->firstTime = time;
+    new_item->data->size = htons(ip->ip_len);
     if (!head)
     {
         head = new_item;
@@ -139,6 +144,7 @@ void pcap_handle(u_char *args, const struct pcap_pkthdr *header, const u_char *p
         else
         {
             tmp->data->time = new_item->data->time;
+            tmp->data->size += htons(ip->ip_len);
         }
     }
     // printf("%s %s %d %d %s %d\n", new_item->data->sourceIP, new_item->data->destinationIP, new_item->data->sourcePORT, new_item->data->destinationPORT, new_item->data->Protocol_type, new_item->data->time);
@@ -208,6 +214,8 @@ int main(int argc, char **argv)
             return 1;
         }
     }
+    timer_g = timer;
+    interval_g = interval;
     if (device_set(file))
     {
         return 1;
@@ -216,7 +224,7 @@ int main(int argc, char **argv)
     tmp = head;
     while (tmp != NULL)
     {
-        printf("%s:%d %s:%d %s %d\n", tmp->data->sourceIP, tmp->data->sourcePORT, tmp->data->destinationIP, tmp->data->destinationPORT, tmp->data->Protocol_type, tmp->data->time);
+        printf("%s:%d %s:%d %s %d %d %d\n", tmp->data->sourceIP, tmp->data->sourcePORT, tmp->data->destinationIP, tmp->data->destinationPORT, tmp->data->Protocol_type, tmp->data->time, tmp->data->firstTime, tmp->data->size);
         tmp = tmp->next;
     }
     //  struct hostent *host_entry = gethostbyname(collector);
