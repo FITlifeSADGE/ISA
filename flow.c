@@ -75,43 +75,61 @@ void send_packet()
 /*
  * checks, whether time between first and last packet of a flow exceeded timer, or time between the latest and newest packet exceeded interval time
  */
-int timer_check(int timer, int interval, int *first, int *last, int *bytes, packet_item *item)
+int timer_check(int timer, int interval, int *first, int *last, int *bytes, packet_item *item, int *head_del)
 {
     packet_item *head_next = NULL;
     // inactive
     if (((item->data->time - head->data->time) >= interval))
     {
-        // toto jsem přidal
         bubbleSort(head);
-        while ((item->data->time - head->data->time) >= interval) {
+        while ((item->data->time - head->data->time) >= interval)
+        {
             head_next = head->next;
+            *bytes = *bytes - head->data->size;
             send_packet();
             head = head_next;
-            if (!head) {
+            if (!head)
+            {
                 break;
             }
         }
-        if (!head) {
+        if (!head)
+        {
+            *head_del = 1;
             head = item;
+            head->next = NULL;
         }
-        //po sem
         printf("interval exceeded, flow exported\n");
         *first = head->data->time;
-        *last = head->data->time;
+        //*last = head->data->time;
         return 1;
     }
-    // FIX
-    /*
+    // flow cache size
     if ((*bytes + item->data->size) >= count_g)
     {
         printf("Flow size exceeded, flow exported\n");
-        send_packets();
-        head = item;
-        *bytes = item->data->size;
-        *first = item->data->time;
-        *last = item->data->time;
+        while ((*bytes + item->data->size) >= count_g)
+        {
+            head_next = head->next;
+            *bytes = *bytes - head->data->size;
+            send_packet();
+            head = head_next;
+            if (!head)
+            {
+                break;
+            }
+        }
+        if (!head)
+        {
+            *head_del = 1;
+            head = item;
+            head->next = NULL;
+        }
+        *first = head->data->time;
+        //*last = head->data->time;
+        *bytes += head->data->size;
         return 1;
-    }*/
+    }
     *bytes += item->data->size;
     if (*first == 0)
     {
@@ -122,23 +140,24 @@ int timer_check(int timer, int interval, int *first, int *last, int *bytes, pack
     if ((*last - *first) >= timer)
     {
         printf("timer exceeded, flow exported\n");
-        /* odstranit HEAD a přesunout head na další, kontrolovat další packet, jestli pro něj to funguje*/
-
-        // toto jsem přidal
         while ((*last - *first) >= timer)
         {
             head_next = head->next;
+            *bytes = *bytes - head->data->size;
             send_packet();
             head = head_next;
-            if (!head) {
+            if (!head)
+            {
                 break;
             }
         }
-        if (!head) {
+        if (!head)
+        {
+            *head_del = 1;
             head = item;
+            head->next = NULL;
         }
         *first = head->data->time;
-        *bytes = item->data->size;
         return 1;
     }
     return 0;
@@ -192,6 +211,7 @@ void pcap_handle(u_char *args, const struct pcap_pkthdr *header, const u_char *p
     packet_item *new_item = malloc(sizeof(packet_item));
     new_item->data = malloc(sizeof(packet_struct));
     packet_item *tmp = NULL;
+    int head_del = 0;
 
     int SourcePort = 0;
     int DestPort = 0;
@@ -211,34 +231,34 @@ void pcap_handle(u_char *args, const struct pcap_pkthdr *header, const u_char *p
     size_ip = IP_HL(ip) * 4;
 
     /* print source and destination IP addresses */
-    printf("   From: %s\n", inet_ntoa(ip->ip_src));
-    printf("   To: %s\n", inet_ntoa(ip->ip_dst));
+    // printf("   From: %s\n", inet_ntoa(ip->ip_src));
+    // printf("   To: %s\n", inet_ntoa(ip->ip_dst));
 
     /* ToS print */
-    printf("   ToS: %d\n", ip->ip_tos);
+    // printf("   ToS: %d\n", ip->ip_tos);
     /* determine protocol */
     switch (ip->ip_p)
     {
     case IPPROTO_TCP:
-        printf("   Protocol: TCP\n");
+        // printf("   Protocol: TCP\n");
         tcp = (struct sniff_tcp *)(packet + SIZE_ETHERNET + size_ip);
-        printf("   Src port: %d\n", ntohs(tcp->th_sport));
-        printf("   Dst port: %d\n", ntohs(tcp->th_dport));
+        // printf("   Src port: %d\n", ntohs(tcp->th_sport));
+        // printf("   Dst port: %d\n", ntohs(tcp->th_dport));
         SourcePort = ntohs(tcp->th_sport);
         DestPort = ntohs(tcp->th_dport);
         type = "TCP";
         break;
     case IPPROTO_UDP:
-        printf("   Protocol: UDP\n");
+        // printf("   Protocol: UDP\n");
         udp = (struct sniff_udp *)(packet + SIZE_ETHERNET + size_ip);
-        printf("    Source port: %d\n", ntohs(udp->udp_sport));
-        printf("    Destination port: %d\n", ntohs(udp->udp_dport));
+        // printf("    Source port: %d\n", ntohs(udp->udp_sport));
+        // printf("    Destination port: %d\n", ntohs(udp->udp_dport));
         SourcePort = ntohs(udp->udp_sport);
         DestPort = ntohs(udp->udp_dport);
         type = "UDP";
         break;
     case IPPROTO_ICMP:
-        printf("   Protocol: ICMP\n");
+        // printf("   Protocol: ICMP\n");
         type = "ICMP";
         break;
     default:
@@ -247,12 +267,12 @@ void pcap_handle(u_char *args, const struct pcap_pkthdr *header, const u_char *p
     }
 
     // time print
-    printf("   Time: %ld\n", header->ts.tv_sec);
+    // printf("   Time: %ld\n", header->ts.tv_sec);
     ts = *localtime(&header->ts.tv_sec);
     strftime(buf, sizeof(buf), "%a %Y-%m-%d %H:%M:%S %Z", &ts);
-    printf("   Time: %s\n", buf);
-    // printf("   Size: %d", htons(ip->ip_len));
-    printf("\n");
+    // printf("   Time: %s\n", buf);
+    // printf("   Size: %d\n", htons(ip->ip_len));
+    // printf("\n");
 
     new_item->data->sourceIP = malloc(strlen(inet_ntoa(ip->ip_src)) + 1);
     new_item->data->destinationIP = malloc(strlen(inet_ntoa(ip->ip_dst)) + 1);
@@ -266,6 +286,7 @@ void pcap_handle(u_char *args, const struct pcap_pkthdr *header, const u_char *p
     new_item->data->time = time;
     new_item->data->firstTime = time;
     new_item->data->size = htons(ip->ip_len);
+    new_item->data->ToS = ip->ip_tos;
     if (!head)
     {
         head = new_item;
@@ -275,11 +296,12 @@ void pcap_handle(u_char *args, const struct pcap_pkthdr *header, const u_char *p
     }
     else
     {
-        if (timer_check(timer_g, interval_g, &first_time, &last_time, &flow_bytes, new_item))
+        if (timer_check(timer_g, interval_g, &first_time, &last_time, &flow_bytes, new_item, &head_del))
         {
-            ptr = head;
-            ptr->next = NULL;
-            return;
+            if (head_del) {
+                ptr = head;
+                return;
+            }
         }
         tmp = exists(new_item);
         if (tmp == NULL)
