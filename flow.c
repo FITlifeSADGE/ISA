@@ -9,7 +9,8 @@ int count_g;
 
 int first_time = 0;
 int last_time = 0;
-int flow_bytes = 0;
+int flow_count = 0;
+packet_item *exists(packet_item *item);
 
 void swap(packet_item *a, packet_item *b)
 {
@@ -64,7 +65,39 @@ void send_packets()
 
 void send_packet()
 {
+    struct sysinfo info;
+    export export_t;
     packet_item *tmp = head;
+    export_t.version = 5;
+    export_t.count = 1;
+    export_t.SysUptime = info.uptime;
+    export_t.unix_secs = time(NULL);
+    export_t.unix_nsecs = time(NULL) * 1000000;
+    export_t.flow_sequence = flow_count;
+    // export_t.engine_type =
+    // export_t.engine_id =
+    // export_t.sampling_interval =
+
+    memcpy(export_t.srcaddr, tmp->data->sourceIP, strlen(tmp->data->sourceIP));
+    memcpy(export_t.dstaddr, tmp->data->destinationIP, strlen(tmp->data->destinationIP));
+    export_t.nexthop = 0;
+    export_t.input = 0;
+    export_t.output = 0;
+    export_t.dPkts = tmp->data->packet_count;
+    // export_t.dOctets =
+    export_t.First = tmp->data->firstTime;
+    export_t.Last = tmp->data->time;
+    export_t.srcport = tmp->data->sourcePORT;
+    export_t.dstport = tmp->data->destinationPORT;
+    // export_t.pad1 = 0;
+    // export_t.tcp_flags =
+    // export_t.prot =
+    export_t.tos = tmp->data->ToS;
+    export_t.src_as = 0;
+    export_t.dst_as = 0;
+    export_t.src_mask = 32;
+    export_t.dst_mask = 32;
+    // export_t.pad2 = 0;
     printf("%s:%d %s:%d %s %d %d %d SENT\n", tmp->data->sourceIP, tmp->data->sourcePORT, tmp->data->destinationIP, tmp->data->destinationPORT, tmp->data->Protocol_type, tmp->data->time, tmp->data->firstTime, tmp->data->size);
     free(tmp->data->sourceIP);
     free(tmp->data->destinationIP);
@@ -75,7 +108,8 @@ void send_packet()
 /*
  * checks, whether time between first and last packet of a flow exceeded timer, or time between the latest and newest packet exceeded interval time
  */
-int timer_check(int timer, int interval, int *first, int *last, int *bytes, packet_item *item, int *head_del)
+/* Přidat možnost kontroly více podmínek najednou*/
+int timer_check(int timer, int interval, int *first, int *last, int *flows, packet_item *item, int *head_del)
 {
     packet_item *head_next = NULL;
     // inactive
@@ -85,8 +119,8 @@ int timer_check(int timer, int interval, int *first, int *last, int *bytes, pack
         while ((item->data->time - head->data->time) >= interval)
         {
             head_next = head->next;
-            *bytes = *bytes - head->data->size;
             send_packet();
+            *flows -= 1;
             head = head_next;
             if (!head)
             {
@@ -101,24 +135,15 @@ int timer_check(int timer, int interval, int *first, int *last, int *bytes, pack
         }
         printf("interval exceeded, flow exported\n");
         *first = head->data->time;
-        //*last = head->data->time;
         return 1;
     }
-    // flow cache size
-    if ((*bytes + item->data->size) >= count_g)
+    head_next = exists(item);
+    if ((*flows == count_g - 1) && (head_next == NULL))
     {
-        printf("Flow size exceeded, flow exported\n");
-        while ((*bytes + item->data->size) >= count_g)
-        {
-            head_next = head->next;
-            *bytes = *bytes - head->data->size;
-            send_packet();
-            head = head_next;
-            if (!head)
-            {
-                break;
-            }
-        }
+        printf("flow count exceeded, flow exported\n");
+        head_next = head->next;
+        send_packet();
+        head = head_next;
         if (!head)
         {
             *head_del = 1;
@@ -126,11 +151,9 @@ int timer_check(int timer, int interval, int *first, int *last, int *bytes, pack
             head->next = NULL;
         }
         *first = head->data->time;
-        //*last = head->data->time;
-        *bytes += head->data->size;
+        *flows -= 1;
         return 1;
     }
-    *bytes += item->data->size;
     if (*first == 0)
     {
         *first = item->data->time;
@@ -143,8 +166,8 @@ int timer_check(int timer, int interval, int *first, int *last, int *bytes, pack
         while ((*last - *first) >= timer)
         {
             head_next = head->next;
-            *bytes = *bytes - head->data->size;
             send_packet();
+            *flows -= 1;
             head = head_next;
             if (!head)
             {
@@ -163,9 +186,6 @@ int timer_check(int timer, int interval, int *first, int *last, int *bytes, pack
     return 0;
 }
 
-/*
- * dissect/print packet
- */
 packet_item *exists(packet_item *item)
 {
     packet_item *tmp;
@@ -201,7 +221,9 @@ packet_item *exists(packet_item *item)
     }
     return NULL;
 }
-
+/*
+ * dissect/print packet
+ */
 void pcap_handle(u_char *args, const struct pcap_pkthdr *header, const u_char *packet)
 {
 
@@ -230,35 +252,22 @@ void pcap_handle(u_char *args, const struct pcap_pkthdr *header, const u_char *p
     ip = (struct sniff_ip *)(packet + SIZE_ETHERNET);
     size_ip = IP_HL(ip) * 4;
 
-    /* print source and destination IP addresses */
-    // printf("   From: %s\n", inet_ntoa(ip->ip_src));
-    // printf("   To: %s\n", inet_ntoa(ip->ip_dst));
-
-    /* ToS print */
-    // printf("   ToS: %d\n", ip->ip_tos);
     /* determine protocol */
     switch (ip->ip_p)
     {
     case IPPROTO_TCP:
-        // printf("   Protocol: TCP\n");
         tcp = (struct sniff_tcp *)(packet + SIZE_ETHERNET + size_ip);
-        // printf("   Src port: %d\n", ntohs(tcp->th_sport));
-        // printf("   Dst port: %d\n", ntohs(tcp->th_dport));
         SourcePort = ntohs(tcp->th_sport);
         DestPort = ntohs(tcp->th_dport);
         type = "TCP";
         break;
     case IPPROTO_UDP:
-        // printf("   Protocol: UDP\n");
         udp = (struct sniff_udp *)(packet + SIZE_ETHERNET + size_ip);
-        // printf("    Source port: %d\n", ntohs(udp->udp_sport));
-        // printf("    Destination port: %d\n", ntohs(udp->udp_dport));
         SourcePort = ntohs(udp->udp_sport);
         DestPort = ntohs(udp->udp_dport);
         type = "UDP";
         break;
     case IPPROTO_ICMP:
-        // printf("   Protocol: ICMP\n");
         type = "ICMP";
         break;
     default:
@@ -266,13 +275,8 @@ void pcap_handle(u_char *args, const struct pcap_pkthdr *header, const u_char *p
         return;
     }
 
-    // time print
-    // printf("   Time: %ld\n", header->ts.tv_sec);
     ts = *localtime(&header->ts.tv_sec);
     strftime(buf, sizeof(buf), "%a %Y-%m-%d %H:%M:%S %Z", &ts);
-    // printf("   Time: %s\n", buf);
-    // printf("   Size: %d\n", htons(ip->ip_len));
-    // printf("\n");
 
     new_item->data->sourceIP = malloc(strlen(inet_ntoa(ip->ip_src)) + 1);
     new_item->data->destinationIP = malloc(strlen(inet_ntoa(ip->ip_dst)) + 1);
@@ -287,18 +291,20 @@ void pcap_handle(u_char *args, const struct pcap_pkthdr *header, const u_char *p
     new_item->data->firstTime = time;
     new_item->data->size = htons(ip->ip_len);
     new_item->data->ToS = ip->ip_tos;
+    new_item->data->packet_count = 1;
     if (!head)
     {
         head = new_item;
         ptr = head;
         head->next = NULL;
-        flow_bytes = new_item->data->size;
+        flow_count = 1;
     }
     else
     {
-        if (timer_check(timer_g, interval_g, &first_time, &last_time, &flow_bytes, new_item, &head_del))
+        if (timer_check(timer_g, interval_g, &first_time, &last_time, &flow_count, new_item, &head_del))
         {
-            if (head_del) {
+            if (head_del)
+            {
                 ptr = head;
                 return;
             }
@@ -309,18 +315,19 @@ void pcap_handle(u_char *args, const struct pcap_pkthdr *header, const u_char *p
             ptr->next = new_item;
             ptr = ptr->next;
             ptr->next = NULL;
+            flow_count += 1;
         }
         else
         {
             tmp->data->time = new_item->data->time;
             tmp->data->size += htons(ip->ip_len);
+            tmp->data->packet_count += 1;
             free(new_item->data->sourceIP);
             free(new_item->data->destinationIP);
             free(new_item->data);
             free(new_item);
         }
     }
-    // printf("%d %d\n", first_time, last_time);
     return;
 }
 

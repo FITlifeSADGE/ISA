@@ -11,6 +11,7 @@
 #include <errno.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/sysinfo.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <netdb.h>
@@ -27,6 +28,7 @@ typedef struct
 	int firstTime;
 	int size;
 	int ToS;
+	int packet_count;
 } packet_struct;
 
 typedef struct packet_item
