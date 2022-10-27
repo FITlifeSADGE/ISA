@@ -3,13 +3,7 @@
 packet_item *ptr;
 packet_item *head;
 
-int timer_g;
-int interval_g;
-int count_g;
-
-int first_time = 0;
-int last_time = 0;
-int flow_count = 0;
+global glob_vars;
 packet_item *exists(packet_item *item);
 
 void swap(packet_item *a, packet_item *b)
@@ -46,13 +40,96 @@ void bubbleSort(packet_item *start)
         lptr = ptr1;
     } while (swapped);
 }
+export export_item(packet_item *tmp)
+{
+    struct sysinfo info;
+    export export_t;
+    export_t.version = 5;
+    export_t.count = 1;
+    export_t.SysUptime = info.uptime;
+    export_t.unix_secs = time(NULL);
+    export_t.unix_nsecs = time(NULL) * 1000000;     // přepsat
+    export_t.flow_sequence = glob_vars.flows_total; // možná pořadí odeslaného flow? ještě kontrola
+    export_t.engine_type = 0;
+    export_t.engine_id = 0;
+    export_t.sampling_interval = 0;
+
+    inet_aton(tmp->data->sourceIP, &(export_t.srcaddr));
+    inet_aton(tmp->data->destinationIP, &(export_t.dstaddr));
+    export_t.nexthop = 0;
+    export_t.input = 0;
+    export_t.output = 0;
+    export_t.dPkts = tmp->data->packet_count;
+    export_t.dOctets = tmp->data->dOctets;
+    export_t.First = tmp->data->firstTime;
+    export_t.Last = tmp->data->time;
+    export_t.srcport = tmp->data->sourcePORT;
+    export_t.dstport = tmp->data->destinationPORT;
+    export_t.pad1 = 0;
+    printf("%d\n", tmp->data->flags);
+    export_t.tcp_flags = tmp->data->flags;
+    if (strcmp(tmp->data->Protocol_type, "ICMP") == 0)
+    {
+        export_t.prot = IPPROTO_ICMP;
+    }
+    if (strcmp(tmp->data->Protocol_type, "TCP") == 0)
+    {
+        export_t.prot = IPPROTO_TCP;
+    }
+    if (strcmp(tmp->data->Protocol_type, "UDP") == 0)
+    {
+        export_t.prot = IPPROTO_UDP;
+    }
+    export_t.tos = tmp->data->ToS;
+    export_t.src_as = 0;
+    export_t.dst_as = 0;
+    export_t.src_mask = 32;
+    export_t.dst_mask = 32;
+    export_t.pad2 = 0;
+    return export_t;
+}
 
 void send_packets()
 {
     packet_item *tmp = head;
     packet_item *pointer = tmp;
+    export export_t;
+    int sock;                        // socket descriptor
+    int msg_size, i;
+    struct sockaddr_in server; // address structures of the server and the client
+    struct hostent *servent;         // network host entry required by gethostbyname()    
+    char buffer[sizeof(export)];            
+   
+    memset(&server,0,sizeof(server)); // erase the server structure
+    server.sin_family = AF_INET;                   
+
+    // make DNS resolution of the first parameter using gethostbyname()
+
+
+    /*přepsat*/
+    if ((servent = gethostbyname("localhost")) == NULL) // check the first parameter
+        errx(1,"gethostbyname() failed\n");
+
+    // copy the first parameter to the server.sin_addr structure
+    memcpy(&server.sin_addr,servent->h_addr,servent->h_length); 
+
+    /* Přepsat*/
+    server.sin_port = htons(atoi("2055"));        // server port (network byte order)
+    
+    if ((sock = socket(AF_INET , SOCK_DGRAM , 0)) == -1)   //create a client socket
+        err(1,"socket() failed\n");
+    
+    printf("* Server socket created\n");
+        
+
+    printf("* Creating a connected UDP socket using connect()\n");                
+    // create a connected UDP socket
+    if (connect(sock, (struct sockaddr *)&server, sizeof(server))  == -1)
+        err(1, "connect() failed");
     while (tmp != NULL)
     {
+        export_t = export_item(tmp);
+        memcpy(buffer, &export_t, sizeof(tmp));
         printf("%s:%d %s:%d %s %d %d %d SENT\n", tmp->data->sourceIP, tmp->data->sourcePORT, tmp->data->destinationIP, tmp->data->destinationPORT, tmp->data->Protocol_type, tmp->data->time, tmp->data->firstTime, tmp->data->size);
         tmp = tmp->next;
         free(pointer->data->sourceIP);
@@ -61,54 +138,79 @@ void send_packets()
         free(pointer);
         pointer = tmp;
     }
+    while((msg_size=read(STDIN_FILENO,buffer,sizeof(export))) > 0) {
+        i = send(sock,buffer,msg_size,0);     // send data to the server
+        if (i == -1)                   // check if data was sent correctly
+        err(1,"send() failed");
+        else if (i != msg_size)
+        err(1,"send(): buffer written partially");
+    }
+        if (msg_size == -1)
+            err(1,"reading failed");
+        close(sock);
+        printf("* Closing the client socket ...\n");
 }
 
 void send_packet()
 {
-    struct sysinfo info;
     export export_t;
     packet_item *tmp = head;
-    export_t.version = 5;
-    export_t.count = 1;
-    export_t.SysUptime = info.uptime;
-    export_t.unix_secs = time(NULL);
-    export_t.unix_nsecs = time(NULL) * 1000000;
-    export_t.flow_sequence = flow_count;
-    // export_t.engine_type =
-    // export_t.engine_id =
-    // export_t.sampling_interval =
+    int sock;                        // socket descriptor
+    int msg_size, i;
+    struct sockaddr_in server; // address structures of the server and the client
+    struct hostent *servent;         // network host entry required by gethostbyname()     
+    char buffer[sizeof(export)];            
+   
+    memset(&server,0,sizeof(server)); // erase the server structure
+    server.sin_family = AF_INET;                   
 
-    memcpy(export_t.srcaddr, tmp->data->sourceIP, strlen(tmp->data->sourceIP));
-    memcpy(export_t.dstaddr, tmp->data->destinationIP, strlen(tmp->data->destinationIP));
-    export_t.nexthop = 0;
-    export_t.input = 0;
-    export_t.output = 0;
-    export_t.dPkts = tmp->data->packet_count;
-    // export_t.dOctets =
-    export_t.First = tmp->data->firstTime;
-    export_t.Last = tmp->data->time;
-    export_t.srcport = tmp->data->sourcePORT;
-    export_t.dstport = tmp->data->destinationPORT;
-    // export_t.pad1 = 0;
-    // export_t.tcp_flags =
-    // export_t.prot =
-    export_t.tos = tmp->data->ToS;
-    export_t.src_as = 0;
-    export_t.dst_as = 0;
-    export_t.src_mask = 32;
-    export_t.dst_mask = 32;
-    // export_t.pad2 = 0;
+    // make DNS resolution of the first parameter using gethostbyname()
+
+
+    /*přepsat*/
+    if ((servent = gethostbyname("localhost")) == NULL) // check the first parameter
+        errx(1,"gethostbyname() failed\n");
+
+    // copy the first parameter to the server.sin_addr structure
+    memcpy(&server.sin_addr,servent->h_addr,servent->h_length); 
+
+    /* Přepsat*/
+    server.sin_port = htons(atoi("2055"));        // server port (network byte order)
+    
+    if ((sock = socket(AF_INET , SOCK_DGRAM , 0)) == -1)   //create a client socket
+        err(1,"socket() failed\n");
+    
+    printf("* Server socket created\n");
+        
+
+    printf("* Creating a connected UDP socket using connect()\n");                
+    // create a connected UDP socket
+    if (connect(sock, (struct sockaddr *)&server, sizeof(server))  == -1)
+        err(1, "connect() failed");
+    export_t = export_item(tmp);
+    memcpy(buffer, &export_t, sizeof(tmp));
     printf("%s:%d %s:%d %s %d %d %d SENT\n", tmp->data->sourceIP, tmp->data->sourcePORT, tmp->data->destinationIP, tmp->data->destinationPORT, tmp->data->Protocol_type, tmp->data->time, tmp->data->firstTime, tmp->data->size);
     free(tmp->data->sourceIP);
     free(tmp->data->destinationIP);
     free(tmp->data);
     free(tmp);
+    while((msg_size=read(STDIN_FILENO,buffer,sizeof(export))) > 0) {
+        i = send(sock,buffer,msg_size,0);     // send data to the server
+        if (i == -1)                   // check if data was sent correctly
+        err(1,"send() failed");
+        else if (i != msg_size)
+        err(1,"send(): buffer written partially");
+    }
+    if (msg_size == -1)
+        err(1,"reading failed");
+    close(sock);
+    printf("* Closing the client socket ...\n");
 }
 
 /*
  * checks, whether time between first and last packet of a flow exceeded timer, or time between the latest and newest packet exceeded interval time
  */
-/* Přidat možnost kontroly více podmínek najednou*/
+/* Přidat možnost kontroly více podmínek najednou, možná hotovo, ještě testovat*/
 int timer_check(int timer, int interval, int *first, int *last, int *flows, packet_item *item, int *head_del)
 {
     packet_item *head_next = NULL;
@@ -116,6 +218,7 @@ int timer_check(int timer, int interval, int *first, int *last, int *flows, pack
     if (((item->data->time - head->data->time) >= interval))
     {
         bubbleSort(head);
+        printf("interval exceeded, flow exported\n");
         while ((item->data->time - head->data->time) >= interval)
         {
             head_next = head->next;
@@ -133,12 +236,13 @@ int timer_check(int timer, int interval, int *first, int *last, int *flows, pack
             head = item;
             head->next = NULL;
         }
-        printf("interval exceeded, flow exported\n");
         *first = head->data->time;
+        // testovat, jestli to funguje dobře
+        timer_check(timer, interval, first, last, flows, item, head_del);
         return 1;
     }
     head_next = exists(item);
-    if ((*flows == count_g - 1) && (head_next == NULL))
+    if ((*flows == glob_vars.count_g) && (head_next == NULL))
     {
         printf("flow count exceeded, flow exported\n");
         head_next = head->next;
@@ -152,6 +256,8 @@ int timer_check(int timer, int interval, int *first, int *last, int *flows, pack
         }
         *first = head->data->time;
         *flows -= 1;
+        // testovat, jestli to funguje dobře
+        timer_check(timer, interval, first, last, flows, item, head_del);
         return 1;
     }
     if (*first == 0)
@@ -181,6 +287,8 @@ int timer_check(int timer, int interval, int *first, int *last, int *flows, pack
             head->next = NULL;
         }
         *first = head->data->time;
+        // testovat, jestli to funguje dobře
+        timer_check(timer, interval, first, last, flows, item, head_del);
         return 1;
     }
     return 0;
@@ -260,15 +368,18 @@ void pcap_handle(u_char *args, const struct pcap_pkthdr *header, const u_char *p
         SourcePort = ntohs(tcp->th_sport);
         DestPort = ntohs(tcp->th_dport);
         type = "TCP";
+        new_item->data->flags = tcp->th_flags;
         break;
     case IPPROTO_UDP:
         udp = (struct sniff_udp *)(packet + SIZE_ETHERNET + size_ip);
         SourcePort = ntohs(udp->udp_sport);
         DestPort = ntohs(udp->udp_dport);
         type = "UDP";
+        new_item->data->flags = 0;
         break;
     case IPPROTO_ICMP:
         type = "ICMP";
+        new_item->data->flags = 0;
         break;
     default:
         printf("   Protocol: unknown\n");
@@ -292,16 +403,18 @@ void pcap_handle(u_char *args, const struct pcap_pkthdr *header, const u_char *p
     new_item->data->size = htons(ip->ip_len);
     new_item->data->ToS = ip->ip_tos;
     new_item->data->packet_count = 1;
+    new_item->data->dOctets = ntohl((u_int32_t)(header->caplen - SIZE_ETHERNET));
     if (!head)
     {
         head = new_item;
         ptr = head;
         head->next = NULL;
-        flow_count = 1;
+        glob_vars.flow_count = 1;
+        glob_vars.flows_total = 1;
     }
     else
     {
-        if (timer_check(timer_g, interval_g, &first_time, &last_time, &flow_count, new_item, &head_del))
+        if (timer_check(glob_vars.timer_g, glob_vars.interval_g, &(glob_vars.first_time), &(glob_vars.last_time), &(glob_vars.flow_count), new_item, &head_del))
         {
             if (head_del)
             {
@@ -315,13 +428,16 @@ void pcap_handle(u_char *args, const struct pcap_pkthdr *header, const u_char *p
             ptr->next = new_item;
             ptr = ptr->next;
             ptr->next = NULL;
-            flow_count += 1;
+            glob_vars.flow_count += 1;
+            glob_vars.flows_total += 1;
         }
         else
         {
             tmp->data->time = new_item->data->time;
             tmp->data->size += htons(ip->ip_len);
             tmp->data->packet_count += 1;
+            tmp->data->dOctets += ntohl((u_int32_t)(header->caplen - SIZE_ETHERNET));
+            tmp->data->flags = (tmp->data->flags | new_item->data->flags);
             free(new_item->data->sourceIP);
             free(new_item->data->destinationIP);
             free(new_item->data);
@@ -395,15 +511,12 @@ int main(int argc, char **argv)
             return 1;
         }
     }
-    timer_g = timer;
-    interval_g = interval;
-    count_g = count;
+    glob_vars.timer_g = timer;
+    glob_vars.interval_g = interval;
+    glob_vars.count_g = count;
     if (device_set(file))
     {
         return 1;
     }
-    //  struct hostent *host_entry = gethostbyname(collector);
-    //  char *IPbuffer = inet_ntoa(*((struct in_addr *)host_entry->h_addr_list[0]));
-    //  printf("%s\n", IPbuffer);
     return 0;
 }

@@ -16,6 +16,7 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <time.h>
+#include<err.h>
 
 typedef struct
 {
@@ -29,6 +30,8 @@ typedef struct
 	int size;
 	int ToS;
 	int packet_count;
+	int dOctets;
+	int flags;
 } packet_struct;
 
 typedef struct packet_item
@@ -118,8 +121,8 @@ typedef struct export
 	u_char engine_id;
 	u_short sampling_interval;
 
-	u_int srcaddr;
-	u_int dstaddr;
+	struct in_addr srcaddr;
+	struct in_addr dstaddr;
 	u_int nexthop;
 	u_short input;
 	u_short output;
@@ -140,6 +143,17 @@ typedef struct export
 	u_short pad2;
 }
 export;
+
+typedef struct global {
+	int timer_g;
+	int interval_g;
+	int count_g;
+
+	int first_time;
+	int last_time;
+	int flow_count;
+	int flows_total;
+}global;
 
 int arg_parse(int *opt, int *timer, int *interval, int *count, char **file, char **collector, char *ptr);
 
