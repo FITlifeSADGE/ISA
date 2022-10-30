@@ -16,7 +16,8 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <time.h>
-#include<err.h>
+#include <err.h>
+#include <regex.h>
 
 typedef struct
 {
@@ -153,6 +154,9 @@ typedef struct global {
 	int last_time;
 	int flow_count;
 	int flows_total;
+
+	char *col_IP;
+	char *col_PORT;
 }global;
 
 int arg_parse(int *opt, int *timer, int *interval, int *count, char **file, char **collector, char *ptr);

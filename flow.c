@@ -42,11 +42,10 @@ void bubbleSort(packet_item *start)
 }
 export export_item(packet_item *tmp)
 {
-    struct sysinfo info;
     export export_t;
     export_t.version = 5;
     export_t.count = 1;
-    export_t.SysUptime = info.uptime;
+    export_t.SysUptime = time(NULL) - tmp->data->firstTime;
     export_t.unix_secs = time(NULL);
     export_t.unix_nsecs = time(NULL) * 1000000;     // přepsat
     export_t.flow_sequence = glob_vars.flows_total; // možná pořadí odeslaného flow? ještě kontrola
@@ -66,7 +65,6 @@ export export_item(packet_item *tmp)
     export_t.srcport = tmp->data->sourcePORT;
     export_t.dstport = tmp->data->destinationPORT;
     export_t.pad1 = 0;
-    printf("%d\n", tmp->data->flags);
     export_t.tcp_flags = tmp->data->flags;
     if (strcmp(tmp->data->Protocol_type, "ICMP") == 0)
     {
@@ -98,31 +96,31 @@ void send_packets()
     int msg_size, i;
     struct sockaddr_in server; // address structures of the server and the client
     struct hostent *servent;         // network host entry required by gethostbyname()    
-    char buffer[sizeof(export)];            
+    char buffer[sizeof(struct export)];            
    
     memset(&server,0,sizeof(server)); // erase the server structure
     server.sin_family = AF_INET;                   
 
     // make DNS resolution of the first parameter using gethostbyname()
-
+    msg_size = sizeof(struct export);
 
     /*přepsat*/
-    if ((servent = gethostbyname("localhost")) == NULL) // check the first parameter
+    if ((servent = gethostbyname(glob_vars.col_IP)) == NULL) // check the first parameter
         errx(1,"gethostbyname() failed\n");
 
     // copy the first parameter to the server.sin_addr structure
     memcpy(&server.sin_addr,servent->h_addr,servent->h_length); 
 
     /* Přepsat*/
-    server.sin_port = htons(atoi("2055"));        // server port (network byte order)
+    server.sin_port = htons(atoi(glob_vars.col_PORT));        // server port (network byte order)
     
     if ((sock = socket(AF_INET , SOCK_DGRAM , 0)) == -1)   //create a client socket
         err(1,"socket() failed\n");
     
-    printf("* Server socket created\n");
+    //printf("* Server socket created\n");
         
 
-    printf("* Creating a connected UDP socket using connect()\n");                
+    //printf("* Creating a connected UDP socket using connect()\n");                
     // create a connected UDP socket
     if (connect(sock, (struct sockaddr *)&server, sizeof(server))  == -1)
         err(1, "connect() failed");
@@ -138,17 +136,15 @@ void send_packets()
         free(pointer);
         pointer = tmp;
     }
-    while((msg_size=read(STDIN_FILENO,buffer,sizeof(export))) > 0) {
-        i = send(sock,buffer,msg_size,0);     // send data to the server
-        if (i == -1)                   // check if data was sent correctly
+    i = send(sock,buffer,msg_size,0);     // send data to the server
+    if (i == -1)                   // check if data was sent correctly
         err(1,"send() failed");
-        else if (i != msg_size)
+    else if (i != msg_size)
         err(1,"send(): buffer written partially");
-    }
-        if (msg_size == -1)
-            err(1,"reading failed");
-        close(sock);
-        printf("* Closing the client socket ...\n");
+    if (msg_size == -1)
+        err(1,"reading failed");
+    close(sock);
+    //printf("* Closing the client socket ...\n");
 }
 
 void send_packet()
@@ -164,26 +160,27 @@ void send_packet()
     memset(&server,0,sizeof(server)); // erase the server structure
     server.sin_family = AF_INET;                   
 
+    msg_size = sizeof(struct export);
     // make DNS resolution of the first parameter using gethostbyname()
 
 
     /*přepsat*/
-    if ((servent = gethostbyname("localhost")) == NULL) // check the first parameter
+    if ((servent = gethostbyname(glob_vars.col_IP)) == NULL) // check the first parameter
         errx(1,"gethostbyname() failed\n");
 
     // copy the first parameter to the server.sin_addr structure
     memcpy(&server.sin_addr,servent->h_addr,servent->h_length); 
 
     /* Přepsat*/
-    server.sin_port = htons(atoi("2055"));        // server port (network byte order)
+    server.sin_port = htons(atoi(glob_vars.col_PORT));        // server port (network byte order)
     
     if ((sock = socket(AF_INET , SOCK_DGRAM , 0)) == -1)   //create a client socket
         err(1,"socket() failed\n");
     
-    printf("* Server socket created\n");
+    //printf("* Server socket created\n");
         
 
-    printf("* Creating a connected UDP socket using connect()\n");                
+    //printf("* Creating a connected UDP socket using connect()\n");                
     // create a connected UDP socket
     if (connect(sock, (struct sockaddr *)&server, sizeof(server))  == -1)
         err(1, "connect() failed");
@@ -194,17 +191,15 @@ void send_packet()
     free(tmp->data->destinationIP);
     free(tmp->data);
     free(tmp);
-    while((msg_size=read(STDIN_FILENO,buffer,sizeof(export))) > 0) {
-        i = send(sock,buffer,msg_size,0);     // send data to the server
-        if (i == -1)                   // check if data was sent correctly
-        err(1,"send() failed");
-        else if (i != msg_size)
-        err(1,"send(): buffer written partially");
-    }
+    i = send(sock,buffer,msg_size,0);     // send data to the server
+    if (i == -1)                   // check if data was sent correctly
+    err(1,"send() failed");
+    else if (i != msg_size)
+    err(1,"send(): buffer written partially");
     if (msg_size == -1)
-        err(1,"reading failed");
+    err(1,"reading failed");
     close(sock);
-    printf("* Closing the client socket ...\n");
+    //printf("* Closing the client socket ...\n");
 }
 
 /*
@@ -218,7 +213,7 @@ int timer_check(int timer, int interval, int *first, int *last, int *flows, pack
     if (((item->data->time - head->data->time) >= interval))
     {
         bubbleSort(head);
-        printf("interval exceeded, flow exported\n");
+        //printf("interval exceeded, flow exported\n");
         while ((item->data->time - head->data->time) >= interval)
         {
             head_next = head->next;
@@ -244,7 +239,7 @@ int timer_check(int timer, int interval, int *first, int *last, int *flows, pack
     head_next = exists(item);
     if ((*flows == glob_vars.count_g) && (head_next == NULL))
     {
-        printf("flow count exceeded, flow exported\n");
+        //printf("flow count exceeded, flow exported\n");
         head_next = head->next;
         send_packet();
         head = head_next;
@@ -268,7 +263,7 @@ int timer_check(int timer, int interval, int *first, int *last, int *flows, pack
     // active
     if ((*last - *first) >= timer)
     {
-        printf("timer exceeded, flow exported\n");
+        //printf("timer exceeded, flow exported\n");
         while ((*last - *first) >= timer)
         {
             head_next = head->next;
@@ -484,7 +479,7 @@ int device_set(char *file)
     pcap_loop(handle, 10000, pcap_handle, NULL);
     pcap_freecode(&fp);
     pcap_close(handle);
-    printf("success\n");
+    //printf("success\n");
     if (head)
     {
         bubbleSort(head);
@@ -503,7 +498,12 @@ int main(int argc, char **argv)
     int count = 1024;
     char *file = "stdin";
     char *collector = "127.0.0.1:2055";
+    char hostname[100];
     char *point = NULL;
+    char *char_ptr;
+    char *char1_ptr;
+    char *IPbuffer;
+    char *port_num = "0";
     while ((opt = getopt(argc, argv, ":f:c:a:i:m:")) != -1)
     {
         if (arg_parse(&opt, &timer, &interval, &count, &file, &collector, point))
@@ -514,6 +514,39 @@ int main(int argc, char **argv)
     glob_vars.timer_g = timer;
     glob_vars.interval_g = interval;
     glob_vars.count_g = count;
+
+    memcpy(hostname, collector, strlen(collector));
+    hostname[strlen(collector)] = '\0';
+    char_ptr = strrchr(hostname, ':');
+    char1_ptr = strrchr(hostname, '/');
+    if (!char_ptr) {
+        struct hostent *host_entry = gethostbyname(hostname);
+        IPbuffer = inet_ntoa(*((struct in_addr *)host_entry->h_addr_list[0]));
+    }
+    else {
+        if (char1_ptr) {
+            //memmove(char1_ptr, char1_ptr+1, strlen(char1_ptr));
+            for(int i = 0; hostname[i] != *char1_ptr; i++) {
+                memmove(hostname, hostname+1, strlen(hostname));
+            }
+            memmove(hostname, hostname+1, strlen(hostname));
+            char_ptr = strrchr(hostname, ':');
+        }
+        if (char_ptr) {
+            memmove(char_ptr, char_ptr+1, strlen(char_ptr));
+            port_num = strdup(char_ptr);
+            *char_ptr = 0;
+            struct hostent *host_entry = gethostbyname(hostname);
+            IPbuffer = inet_ntoa(*((struct in_addr *)host_entry->h_addr_list[0]));
+        }
+        else {
+            struct hostent *host_entry = gethostbyname(hostname);
+            IPbuffer = inet_ntoa(*((struct in_addr *)host_entry->h_addr_list[0]));
+        }
+    }
+    glob_vars.col_IP = strdup(IPbuffer);
+    glob_vars.col_PORT = strdup(port_num);
+
     if (device_set(file))
     {
         return 1;
