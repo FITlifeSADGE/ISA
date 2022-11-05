@@ -41,6 +41,8 @@ typedef struct packet_item
 	struct packet_item *next;
 } packet_item;
 
+/*TATO ČÁST KÓDU JE PŘEVZATA ZE STRÁNKY https://www.tcpdump.org/pcap.html, AUTOR: Tim Carstens, Copyright 2002 Tim Carstens*/
+
 /* Ethernet addresses are 6 bytes */
 #define ETHER_ADDR_LEN 6
 
@@ -100,6 +102,8 @@ struct sniff_tcp
 	u_short th_sum; /* checksum */
 	u_short th_urp; /* urgent pointer */
 };
+
+/*KONEC PŘEVZATÉ ČÁSTI*/
 
 struct sniff_udp
 {
