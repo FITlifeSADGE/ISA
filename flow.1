@@ -1,0 +1,34 @@
+.TH Flow
+.SH NAME
+flow \- load packets from file, process packets and export them
+.SH SYNOPSIS
+.B flow
+[\fB\-f\fR \fIFILE\fR]
+[\fB\-c\fR \fICOLLECTOR\fR]
+[\fB\-a\fR \fIACTIVE_TIMER\fR]
+[\fB\-i\fR \fIINACTIVE_TIMER\fR]
+[\fB\-m\fR \fIFLOW_CACHE_SIZE\fR]
+.SH DESCRIPTION
+.B flow
+export flows by setting timers and flow cache size
+.SH OPTIONS
+.TP
+.BR \-f ", " \-\-file =\fIFILE\fR
+Choose .pcap file containing packets.
+Default is STDIN.
+.TP
+.BR \-c ", " \-\-string =\fICOLLECTOR\fR
+Specify address where you want to export flows.
+Default is 127.0.0.1:2055.
+.TP
+.BR \-a ", " \-\-int =\fIACTIVE_TIMER\fR
+Set max time a flow can be active. If first packet of flow is older than active timer, the flow is exported.
+Default is 60.
+.TP
+.BR \-i ", " \-\-int =\fIINACTIVE_TIMER\fR
+Set max time a flow can be inactive. If last packet of flow is older than inactive timer, the flow is exported.
+Default is 10.
+.TP
+.BR \-m ", " \-\-int =\fIFLOW_CACHE_SIZE\fR
+Set max number of flows. If number of flows exceeds this limit, the oldest flow is exported.
+Default is 1024.
