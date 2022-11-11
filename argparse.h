@@ -159,6 +159,8 @@ typedef struct global {
 	int flow_count;
 	int flows_total;
 
+	int boot_packet_time;
+
 	char *col_IP;
 	char *col_PORT;
 }global;

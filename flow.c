@@ -48,7 +48,7 @@ export export_item(packet_item *tmp)
     export export_t; // Predefined structure
     export_t.version = 5; // NetFlow export format version number
     export_t.count = 1; // Number of flows exported in this packet 
-    export_t.SysUptime = time(NULL) - tmp->data->firstTime; // Current time in milliseconds since the export device booted
+    export_t.SysUptime = (time(NULL) - glob_vars.boot_packet_time) * 1000; // Current time in milliseconds since the export device booted
     export_t.unix_secs = time(NULL); // Current count of seconds since 0000 UTC 1970
     export_t.unix_nsecs = time(NULL) * 1000000;     // Residual nanoseconds since 0000 UTC 1970
     export_t.flow_sequence = glob_vars.flows_total; // Sequence counter of total flows seen
@@ -365,10 +365,12 @@ void pcap_handle(u_char *args, const struct pcap_pkthdr *header, const u_char *p
         new_item->data->flags = 0;
         break;
     default:
-        printf("   Protocol: unknown\n");
+        printf("Protocol: unknown\n");
         return;
     }
-
+    if (!glob_vars.boot_packet_time) {
+        glob_vars.boot_packet_time = time;
+    }
     ts = *localtime(&header->ts.tv_sec);
     strftime(buf, sizeof(buf), "%a %Y-%m-%d %H:%M:%S %Z", &ts);
 
