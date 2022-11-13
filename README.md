@@ -27,3 +27,9 @@ $ manual.pdf - dokumentace projektu
 $ Před spuštěním použijeme příkaz make
 $ Pro spuštění zadáme příkaz ./flow [-f soubor] [-a active timer] [-i inactive timer] [-m flow cache size] [-c netflow colllector]
 ```
+
+# Omezení
+
+```
+$ Kontrola inactive timeru nefunguje vždy
+```

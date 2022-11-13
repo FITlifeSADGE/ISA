@@ -46,12 +46,14 @@ void bubbleSort(packet_item *start)
 export export_item(packet_item *tmp)
 {
     export export_t; // Predefined structure
-    export_t.version = 5; // NetFlow export format version number
-    export_t.count = 1; // Number of flows exported in this packet 
-    export_t.SysUptime = (time(NULL) - glob_vars.boot_packet_time) * 1000; // Current time in milliseconds since the export device booted
-    export_t.unix_secs = time(NULL); // Current count of seconds since 0000 UTC 1970
-    export_t.unix_nsecs = time(NULL) * 1000000;     // Residual nanoseconds since 0000 UTC 1970
-    export_t.flow_sequence = glob_vars.flows_total; // Sequence counter of total flows seen
+    export_t.version = htons(5); // NetFlow export format version number
+    export_t.count = htons(1); // Number of flows exported in this packet 
+    export_t.SysUptime = htonl(((glob_vars.last_packet_time) - (glob_vars.boot_packet_time)) * 1000 + ((glob_vars.last_packet_mtime - glob_vars.boot_packet_mtime)/1000)); // Current time in milliseconds since the export device booted
+    printf("%d %d %d %d\n", glob_vars.last_packet_time, glob_vars.boot_packet_time, glob_vars.last_packet_mtime, glob_vars.boot_packet_mtime);
+    export_t.unix_secs = htonl(tmp->data->time); // Current count of seconds since 0000 UTC 1970
+    export_t.unix_nsecs = htonl(tmp->data->mtime * 1000);     // Residual nanoseconds since 0000 UTC 1970
+    export_t.flow_sequence = htonl(glob_vars.flows_total); // Sequence counter of total flows seen
+    glob_vars.flows_total += 1;
     export_t.engine_type = 0; // Type of flow-switching engine
     export_t.engine_id = 0; // Slot number of the flow-switching engine
     export_t.sampling_interval = 0; // First two bits hold the sampling mode; remaining 14 bits hold value of sampling interval
@@ -62,12 +64,12 @@ export export_item(packet_item *tmp)
     export_t.nexthop = 0; // IP address of next hop router
     export_t.input = 0; // SNMP index of input interface
     export_t.output = 0; // SNMP index of output interface
-    export_t.dPkts = tmp->data->packet_count; // Packets in the flow
-    export_t.dOctets = tmp->data->dOctets; // Total number of Layer 3 bytes in the packets of the flow
-    export_t.First = tmp->data->firstTime; // SysUptime at start of flow
-    export_t.Last = tmp->data->time; // SysUptime at the time the last packet of the flow was received
-    export_t.srcport = tmp->data->sourcePORT; // TCP/UDP source port number or equivalent
-    export_t.dstport = tmp->data->destinationPORT; // TCP/UDP destination port number or equivalent
+    export_t.dPkts = htonl(tmp->data->packet_count); // Packets in the flow
+    export_t.dOctets = htonl(tmp->data->dOctets); // Total number of Layer 3 bytes in the packets of the flow
+    export_t.First = htonl(((tmp->data->firstTime) - (glob_vars.boot_packet_time)) * 1000 + ((tmp->data->firstmtime - glob_vars.boot_packet_mtime)/1000)); // SysUptime at start of flow
+    export_t.Last = htonl(((tmp->data->time) - (glob_vars.boot_packet_time)) * 1000 + ((tmp->data->mtime - glob_vars.boot_packet_mtime)/1000)); // SysUptime at the time the last packet of the flow was received
+    export_t.srcport = htons(tmp->data->sourcePORT); // TCP/UDP source port number or equivalent
+    export_t.dstport = htons(tmp->data->destinationPORT); // TCP/UDP destination port number or equivalent
     export_t.pad1 = 0; // Unused (zero) bytes
     export_t.tcp_flags = tmp->data->flags; // Cumulative OR of TCP flags
     /*IP protocol type (for example, TCP = 6; UDP = 17)*/
@@ -86,8 +88,8 @@ export export_item(packet_item *tmp)
     export_t.tos = tmp->data->ToS; // IP type of service (ToS)
     export_t.src_as = 0; // Autonomous system number of the source, either origin or peer
     export_t.dst_as = 0; // Autonomous system number of the destination, either origin or peer
-    export_t.src_mask = 32; // Source address prefix mask bits
-    export_t.dst_mask = 32; // Destination address prefix mask bits
+    export_t.src_mask = htons(32); // Source address prefix mask bits
+    export_t.dst_mask = htons(32); // Destination address prefix mask bits
     export_t.pad2 = 0; // Unused (zero) bytes
     return export_t;
 }
@@ -126,23 +128,24 @@ void send_packets()
     while (tmp != NULL)
     {
         export_t = export_item(tmp); // create structure to export
-        memcpy(buffer, &export_t, sizeof(tmp));
-        printf("%s:%d %s:%d %s %d %d %d SENT\n", tmp->data->sourceIP, tmp->data->sourcePORT, tmp->data->destinationIP, tmp->data->destinationPORT, tmp->data->Protocol_type, tmp->data->time, tmp->data->firstTime, tmp->data->size);
+        memcpy(buffer, &(export_t), msg_size);
+        //printf("%s:%d %s:%d %s %d %d %d SENT\n", tmp->data->sourceIP, tmp->data->sourcePORT, tmp->data->destinationIP, tmp->data->destinationPORT, tmp->data->Protocol_type, tmp->data->time, tmp->data->firstTime, tmp->data->size);
         tmp = tmp->next; // move to the next flow
         free(pointer->data->sourceIP); // free memory taken up by flow
         free(pointer->data->destinationIP);
         free(pointer->data);
         free(pointer);
         pointer = tmp;
+        i = send(sock,buffer,msg_size,0);     // send data to the server
+        if (i == -1)                   // check if data was sent correctly
+            err(1,"send() failed");
+        else if (i != msg_size)
+            err(1,"send(): buffer written partially");
+        if (msg_size == -1)
+            err(1,"reading failed");
+        memset(buffer, 0, sizeof(buffer));
+        close(sock);
     }
-    i = send(sock,buffer,msg_size,0);     // send data to the server
-    if (i == -1)                   // check if data was sent correctly
-        err(1,"send() failed");
-    else if (i != msg_size)
-        err(1,"send(): buffer written partially");
-    if (msg_size == -1)
-        err(1,"reading failed");
-    close(sock);
 }
 /*Function send_packet exports one flow*/
 void send_packet()
@@ -177,8 +180,9 @@ void send_packet()
     if (connect(sock, (struct sockaddr *)&server, sizeof(server))  == -1)
         err(1, "connect() failed");
     export_t = export_item(tmp); // create structure to export
-    memcpy(buffer, &export_t, sizeof(tmp));
-    printf("%s:%d %s:%d %s %d %d %d SENT\n", tmp->data->sourceIP, tmp->data->sourcePORT, tmp->data->destinationIP, tmp->data->destinationPORT, tmp->data->Protocol_type, tmp->data->time, tmp->data->firstTime, tmp->data->size);
+    memcpy(buffer, &export_t, msg_size);
+    buffer[strlen(buffer)] = '\0';
+    //printf("%s:%d %s:%d %s %d %d %d SENT\n", tmp->data->sourceIP, tmp->data->sourcePORT, tmp->data->destinationIP, tmp->data->destinationPORT, tmp->data->Protocol_type, tmp->data->time, tmp->data->firstTime, tmp->data->size);
     free(tmp->data->sourceIP); // free memory taken up by flow
     free(tmp->data->destinationIP);
     free(tmp->data);
@@ -324,11 +328,12 @@ void pcap_handle(u_char *args, const struct pcap_pkthdr *header, const u_char *p
     new_item->data = malloc(sizeof(packet_struct));
     packet_item *tmp = NULL;
     int head_del = 0;
-
     int SourcePort = 0;
     int DestPort = 0;
     char *type = NULL;
     int time = header->ts.tv_sec;
+    int mtime = header->ts.tv_usec;
+
 
     // time
     struct tm ts;
@@ -370,6 +375,7 @@ void pcap_handle(u_char *args, const struct pcap_pkthdr *header, const u_char *p
     }
     if (!glob_vars.boot_packet_time) {
         glob_vars.boot_packet_time = time;
+        glob_vars.boot_packet_mtime = mtime;
     }
     ts = *localtime(&header->ts.tv_sec);
     strftime(buf, sizeof(buf), "%a %Y-%m-%d %H:%M:%S %Z", &ts);
@@ -385,17 +391,21 @@ void pcap_handle(u_char *args, const struct pcap_pkthdr *header, const u_char *p
     new_item->data->Protocol_type = type; // store protocol type
     new_item->data->time = time; // store last time flow was seen
     new_item->data->firstTime = time; // store first time flow was seen
-    new_item->data->size = htons(ip->ip_len); // store size of packet
+    new_item->data->mtime = mtime;
+    new_item->data->firstmtime = mtime;
+    new_item->data->size = ntohs(ip->ip_len); // store size of packet
     new_item->data->ToS = ip->ip_tos; // store Type of service
     new_item->data->packet_count = 1; // store first packet
-    new_item->data->dOctets = ntohl((u_int32_t)(header->caplen - SIZE_ETHERNET)); // calculate dOctets
+    new_item->data->dOctets = ntohs(ip->ip_len); // calculate dOctets
+    glob_vars.last_packet_time = time;
+    glob_vars.last_packet_mtime = mtime;
     if (!head) // if first flow in list
     {
         head = new_item;
         ptr = head;
         head->next = NULL;
         glob_vars.flow_count = 1; 
-        glob_vars.flows_total = 1;
+        glob_vars.flows_total = 0;
     }
     else // if more than 1 flow in list
     {
@@ -415,14 +425,14 @@ void pcap_handle(u_char *args, const struct pcap_pkthdr *header, const u_char *p
             ptr = ptr->next;
             ptr->next = NULL;
             glob_vars.flow_count += 1;
-            glob_vars.flows_total += 1;
         }
         else // if it exists, update its' data
         {
             tmp->data->time = new_item->data->time;
-            tmp->data->size += htons(ip->ip_len);
+            tmp->data->mtime = new_item->data->mtime;
+            tmp->data->size += ntohs(ip->ip_len);
             tmp->data->packet_count += 1;
-            tmp->data->dOctets += ntohl((u_int32_t)(header->caplen - SIZE_ETHERNET));
+            tmp->data->dOctets += ntohs(ip->ip_len);
             tmp->data->flags = (tmp->data->flags | new_item->data->flags);
             free(new_item->data->sourceIP); // and free memory taken up by new packet
             free(new_item->data->destinationIP);
@@ -475,7 +485,13 @@ int device_set(char *file)
     if (head)
     {
         bubbleSort(head);
-        send_packets();
+        packet_item *tmp = head;
+        while (tmp != NULL) {
+            tmp = tmp->next;
+            send_packet();
+            head = tmp;
+        }
+        //send_packets();
     }
     return 0;
 }

@@ -28,6 +28,8 @@ typedef struct
 	char *Protocol_type;
 	int time;
 	int firstTime;
+	int mtime;
+	int firstmtime;
 	int size;
 	int ToS;
 	int packet_count;
@@ -160,6 +162,10 @@ typedef struct global {
 	int flows_total;
 
 	int boot_packet_time;
+	int last_packet_time;
+
+	int boot_packet_mtime;
+	int last_packet_mtime;
 
 	char *col_IP;
 	char *col_PORT;
